@@ -1,0 +1,52 @@
+name: Deploy site
+
+# Publishes playbadr.com: the pages in this repository plus the newest web build at /play. A game release (a GitHub
+# release here carrying Badr-WebGL.zip, Badr-Windows.zip and Badr-Linux.zip) redeploys the site with that build.
+# The download buttons link to releases/latest/download/<file>, so they always point at the newest release.
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir _site
+          rsync -a --exclude .git --exclude .github ./ _site/
+          if gh release download --repo "$GITHUB_REPOSITORY" --pattern Badr-WebGL.zip --dir "$RUNNER_TEMP/web"; then
+            mkdir -p _site/play
+            unzip -q "$RUNNER_TEMP/web/Badr-WebGL.zip" -d _site/play
+            echo "Web build: $(cat _site/play/version.json)"
+          else
+            echo "::warning::No release with Badr-WebGL.zip yet; deploying the site without /play."
+          fi
+          du -sh _site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
